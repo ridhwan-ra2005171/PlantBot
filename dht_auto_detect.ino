@@ -56,10 +56,10 @@ void loop() {
   
   // Determine which one looks correct
   if (!isnan(temp11) && temp11 > 10 && temp11 < 40) {
-    Serial.println("✅ DHT11 looks correct!");
+    Serial.println(" DHT11 looks correct!");
   }
   if (!isnan(temp22) && temp22 > 10 && temp22 < 40) {
-    Serial.println("✅ DHT22 looks correct!");
+    Serial.println(" DHT22 looks correct!");
   }
   
   Serial.println("=============================\n");

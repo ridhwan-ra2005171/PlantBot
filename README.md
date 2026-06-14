@@ -143,19 +143,16 @@ const char* chatID = "YOUR_TELEGRAM_CHAT_ID";
 ## Known Issues
 
 - DHT11 sensor requires manual calibration (likely a cheap unit)
-- WiFi auto-reconnect not yet implemented
 - History limited to 10 readings
 
 ---
 
 ## Future Plans
 
-- Automatic watering with a pump
 - Better temperature sensor (DS18B20)
 - Light sensor for sunlight tracking
-- Battery/solar power option
 - Web dashboard
 
 ---
 
-*Interactive Systems Project — June 2026*
+
