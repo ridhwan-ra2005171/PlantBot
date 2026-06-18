@@ -28,8 +28,8 @@ Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, OLED_RESET);
 #define GREEN_LED 14
 
 // moisture calibration values (found through testing)
-#define DRY_VAL 95
-#define WET_VAL 64
+#define DRY_VAL 634
+#define WET_VAL 380
 
 // temp sensor setup - had to calibrate because readings were off
 #define DHT_TYPE DHT11
@@ -53,7 +53,7 @@ unsigned long displayTimer = 0;
 int alertThreshold = 30;
 String plantName = "My Plant";
 bool displayActive = false;
-int proximityDist = 50;
+int proximityDist = 60; //this is in cm
 
 // sensor readings
 int moisture = 0;
@@ -145,19 +145,37 @@ void setup() {
   displayTimer = millis();
 }
 
-// read distance from ultrasonic
-int getDistance() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-  
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
-  int dist = duration * 0.034 / 2;
-  
-  if (dist == 0) return 999;
-  return dist;
+// reading distance from ultrasonic
+int getDistance() { //ultrasonic sensor sometimes return a junk value, so we take the median
+  const int samples = 5;
+  int readings[samples];
+
+  for (int i = 0; i < samples; i++) {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+
+    long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+    int dist = duration * 0.034 / 2;
+    if (dist == 0) dist = 999;   // timeout = nothing in range
+    readings[i] = dist;
+    delay(10);                   // small gap so the previous echo settles
+  }
+
+  // sort the readings (simple bubble sort, only 5 values)
+  for (int i = 0; i < samples - 1; i++) {
+    for (int j = i + 1; j < samples; j++) {
+      if (readings[j] < readings[i]) {
+        int tmp = readings[i];
+        readings[i] = readings[j];
+        readings[j] = tmp;
+      }
+    }
+  }
+
+  return readings[samples / 2];  // the middle value = median
 }
 
 // read all sensors
@@ -314,9 +332,9 @@ void checkProximity() {
   }
   
   // auto off after timeout
-  if (displayActive && (millis() - displayTimer > 30000)) {
+  if (displayActive && (millis() - displayTimer > 20000)) {
     Serial.println("Display timeout");
-    displayActive = false;
+    displayActive = false; //set true if, theres no HC-SR04 ultrasonic
   }
 }
 
