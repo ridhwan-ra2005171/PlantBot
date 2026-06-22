@@ -18,7 +18,7 @@ Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, OLED_RESET);
 
 // sensor pins
 #define MOISTURE_PIN A0
-#define DHT_PIN 2  
+#define DHT_PIN 2
 #define TRIG_PIN 12
 #define ECHO_PIN 16
 
@@ -27,9 +27,9 @@ Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, OLED_RESET);
 #define YELLOW_LED 15
 #define GREEN_LED 14
 
-// moisture calibration values (found through testing)
+// moisture calibration values - tested ridhwan
 #define DRY_VAL 634
-#define WET_VAL 380
+#define WET_VAL 401
 
 // temp sensor setup - had to calibrate because readings were off
 #define DHT_TYPE DHT11
@@ -37,7 +37,7 @@ DHT dht(DHT_PIN, DHT_TYPE);
 #define TEMP_OFFSET 20.0
 #define HUMIDITY_OFFSET 35.0
 
-// credentials stored in separate file (not pushed to GitHub)
+// credentials (not pushed to GitHub)
 #include "credentials.h"
 
 WiFiClientSecure client;
@@ -51,9 +51,9 @@ unsigned long displayTimer = 0;
 
 // settings
 int alertThreshold = 30;
-String plantName = "My Plant";
+String plantName = "My Salad";
 bool displayActive = false;
-int proximityDist = 60; //this is in cm
+int proximityDist = 60; // in cm
 
 // sensor readings
 int moisture = 0;
@@ -68,13 +68,13 @@ bool histFull = false;
 void setup() {
   Serial.begin(115200);
   Wire.begin(4, 5);
-  
+
   // init display
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println("Display init failed");
-    while(1);
+    while (1);
   }
-  
+
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
@@ -82,7 +82,7 @@ void setup() {
   display.println("Plant Monitor");
   display.println("Starting up...");
   display.display();
-  
+
   // setup pins
   pinMode(MOISTURE_PIN, INPUT);
   pinMode(RED_LED, OUTPUT);
@@ -90,17 +90,17 @@ void setup() {
   pinMode(GREEN_LED, OUTPUT);
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
-  
+
   // turn off LEDs
   digitalWrite(RED_LED, LOW);
   digitalWrite(YELLOW_LED, LOW);
   digitalWrite(GREEN_LED, LOW);
-  
+
   // init DHT sensor
   pinMode(DHT_PIN, INPUT_PULLUP);
   dht.begin();
-  delay(2000);  // wait for sensor to stabilize
-  
+  delay(2000); // wait for sensor to stabilize
+
   // test DHT
   float testTemp = dht.readTemperature();
   if (isnan(testTemp)) {
@@ -112,41 +112,41 @@ void setup() {
     Serial.print("DHT working, temp: ");
     Serial.println(testTemp);
   }
-  
+
   // connect wifi
   Serial.print("Connecting to WiFi");
   display.setCursor(0, 20);
   display.println("WiFi connecting...");
   display.display();
-  
+
   WiFi.begin(ssid, password);
-  
+
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
     Serial.print(".");
     attempts++;
   }
-  
-  if(WiFi.status() == WL_CONNECTED) {
+
+  if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nConnected!");
     display.println("WiFi OK");
     display.display();
   }
-  
+
   client.setInsecure();
-  
+
   // send startup msg to telegram
   bot.sendMessage(chatID, "Plant monitor online! Type /help for commands", "");
   Serial.println("Telegram msg sent");
-  
+
   delay(2000);
   displayActive = true;
   displayTimer = millis();
 }
 
-// reading distance from ultrasonic
-int getDistance() { //ultrasonic sensor sometimes return a junk value, so we take the median
+// read distance from ultrasonic (median of 5 readings to reduce jumpiness)
+int getDistance() {
   const int samples = 5;
   int readings[samples];
 
@@ -159,12 +159,12 @@ int getDistance() { //ultrasonic sensor sometimes return a junk value, so we tak
 
     long duration = pulseIn(ECHO_PIN, HIGH, 30000);
     int dist = duration * 0.034 / 2;
-    if (dist == 0) dist = 999;   // timeout = nothing in range
+    if (dist == 0) dist = 999; // timeout = nothing in range
     readings[i] = dist;
-    delay(10);                   // small gap so the previous echo settles
+    delay(10); // small gap so the previous echo settles
   }
 
-  // sort the readings (simple bubble sort, only 5 values)
+  // sort readings (bubble sort, only 5 values)
   for (int i = 0; i < samples - 1; i++) {
     for (int j = i + 1; j < samples; j++) {
       if (readings[j] < readings[i]) {
@@ -175,7 +175,7 @@ int getDistance() { //ultrasonic sensor sometimes return a junk value, so we tak
     }
   }
 
-  return readings[samples / 2];  // the middle value = median
+  return readings[samples / 2]; // middle value = median
 }
 
 // read all sensors
@@ -184,7 +184,7 @@ void readSensors() {
   int raw = analogRead(MOISTURE_PIN);
   moisture = map(raw, WET_VAL, DRY_VAL, 100, 0);
   moisture = constrain(moisture, 0, 100);
-  
+
   // save to history
   moistureHist[histIdx] = moisture;
   histIdx++;
@@ -192,18 +192,18 @@ void readSensors() {
     histIdx = 0;
     histFull = true;
   }
-  
+
   // temp and humidity
   float rawT = dht.readTemperature();
   float rawH = dht.readHumidity();
-  
+
   // retry if failed
   if (isnan(rawT) || isnan(rawH)) {
     delay(100);
     rawT = dht.readTemperature();
     rawH = dht.readHumidity();
   }
-  
+
   // apply calibration
   if (!isnan(rawT)) {
     temp = rawT + TEMP_OFFSET;
@@ -216,7 +216,7 @@ void readSensors() {
     temp = 0;
     Serial.print("Temp failed | ");
   }
-  
+
   if (!isnan(rawH)) {
     humidity = rawH + HUMIDITY_OFFSET;
     humidity = constrain(humidity, 0, 100);
@@ -229,7 +229,7 @@ void readSensors() {
     humidity = 0;
     Serial.println("Humidity failed");
   }
-  
+
   Serial.print("Moisture: ");
   Serial.print(moisture);
   Serial.print("% | Temp: ");
@@ -244,13 +244,45 @@ void updateLEDs() {
   digitalWrite(RED_LED, LOW);
   digitalWrite(YELLOW_LED, LOW);
   digitalWrite(GREEN_LED, LOW);
-  
+
   if (moisture < 20) {
     digitalWrite(RED_LED, HIGH);
   } else if (moisture < 40) {
     digitalWrite(YELLOW_LED, HIGH);
   } else {
     digitalWrite(GREEN_LED, HIGH);
+  }
+}
+
+// draw face on right side of OLED based on moisture level
+void drawFace() {
+  int fx = 96;
+  int fy = 40;
+  int fr = 18;
+
+  display.drawCircle(fx, fy, fr, SSD1306_WHITE);
+  display.fillCircle(fx - 6, fy - 5, 2, SSD1306_WHITE); // left eye
+  display.fillCircle(fx + 6, fy - 5, 2, SSD1306_WHITE); // right eye
+
+  if (moisture >= 50) {
+    // HAPPY - parabola curving upward (y decreases toward edges)
+    for (int i = -6; i <= 6; i++) {
+      int sx = fx + i;
+      int sy = fy + 10 - (i * i) / 9;  // curves up = smile
+      display.drawPixel(sx, sy, SSD1306_WHITE);
+      display.drawPixel(sx, sy + 1, SSD1306_WHITE);
+    }
+  } else if (moisture >= 30) {
+    // NEUTRAL - flat line
+    display.drawLine(fx - 6, fy + 7, fx + 6, fy + 7, SSD1306_WHITE);
+  } else {
+    // SAD - parabola curving downward (y increases toward edges)
+    for (int i = -6; i <= 6; i++) {
+      int sx = fx + i;
+      int sy = fy + 6 + (i * i) / 9;  // curves down = frown
+      display.drawPixel(sx, sy, SSD1306_WHITE);
+      display.drawPixel(sx, sy - 1, SSD1306_WHITE);
+    }
   }
 }
 
@@ -261,40 +293,40 @@ void updateDisplay() {
     display.display();
     return;
   }
-  
+
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
-  
+
+  // plant name + divider
   display.setCursor(0, 0);
   display.println(plantName);
   display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
-  
-  // show moisture big
+
+  // moisture reading (big, left side)
   display.setTextSize(2);
-  display.setCursor(0, 15);
+  display.setCursor(0, 13);
   display.print("M:");
   display.print(moisture);
   display.println("%");
-  
-  // temp and humidity
+
+  // temp and humidity (small, left side)
   display.setTextSize(1);
   display.setCursor(0, 35);
   if (temp > 0) {
-    display.print("T: ");
+    display.print("T:");
     display.print(temp, 1);
     display.println("C");
   }
-  
   display.setCursor(0, 45);
   if (humidity > 0) {
-    display.print("H: ");
+    display.print("H:");
     display.print(humidity, 1);
     display.println("%");
   }
-  
-  // status
-  display.setCursor(0, 55);
+
+  // status text bottom left
+  display.setCursor(0, 56);
   if (moisture < 20) {
     display.print("VERY DRY");
   } else if (moisture < 40) {
@@ -304,24 +336,27 @@ void updateDisplay() {
   } else {
     display.print("WET");
   }
-  
-  // wifi indicator
-  display.setCursor(110, 0);
+
+  // wifi indicator top right
+  display.setCursor(100, 0);
   if (WiFi.status() == WL_CONNECTED) {
-    display.print("W");
+    display.print("Wifi");
   }
-  
+
+  // draw face on right side
+  drawFace();
+
   display.display();
 }
 
 // check proximity and turn display on/off
 void checkProximity() {
   int dist = getDistance();
-  
+
   Serial.print("Distance: ");
   Serial.print(dist);
   Serial.println("cm");
-  
+
   // turn on if someone nearby
   if (dist < proximityDist && dist > 0) {
     if (!displayActive) {
@@ -330,11 +365,11 @@ void checkProximity() {
     displayActive = true;
     displayTimer = millis();
   }
-  
-  // auto off after timeout
+
+  // auto off after 20 seconds
   if (displayActive && (millis() - displayTimer > 20000)) {
     Serial.println("Display timeout");
-    displayActive = false; //set true if, theres no HC-SR04 ultrasonic
+    displayActive = false; // set true if no HC-SR04 connected
   }
 }
 
@@ -357,7 +392,7 @@ void checkAlert() {
       msg += String(humidity, 1);
       msg += "%\n";
     }
-    
+
     bot.sendMessage(chatID, msg, "");
     lastAlert = millis();
     Serial.println("Alert sent");
@@ -369,9 +404,9 @@ void handleMessages(int numMsgs) {
   for (int i = 0; i < numMsgs; i++) {
     String chat = String(bot.messages[i].chat_id);
     String text = bot.messages[i].text;
-    
+
     Serial.println("Got: " + text);
-    
+
     if (text == "/start") {
       String msg = "Plant Monitor Bot\n\n";
       msg += "Monitoring: " + plantName + "\n\n";
@@ -388,7 +423,7 @@ void handleMessages(int numMsgs) {
         msg += "Humidity: " + String(humidity, 1) + "%\n";
       }
       msg += "Alert level: " + String(alertThreshold) + "%\n\n";
-      
+
       if (moisture < 20) {
         msg += "Status: VERY DRY\nWater now!";
       } else if (moisture < 40) {
@@ -398,12 +433,12 @@ void handleMessages(int numMsgs) {
       } else {
         msg += "Status: WET\nDont water";
       }
-      
+
       if (lastWatered > 0) {
         unsigned long hrs = (millis() - lastWatered) / 3600000;
         msg += "\n\nLast watered: " + String(hrs) + "h ago";
       }
-      
+
       bot.sendMessage(chat, msg, "");
     }
     else if (text == "/help") {
@@ -515,17 +550,17 @@ void loop() {
   checkProximity();
   updateDisplay();
   checkAlert();
-  
+
   // check telegram
   if (millis() - lastBotCheck > 1000) {
     int numNew = bot.getUpdates(bot.last_message_received + 1);
-    
+
     if (numNew) {
       handleMessages(numNew);
     }
-    
+
     lastBotCheck = millis();
   }
-  
+
   delay(500);
 }
