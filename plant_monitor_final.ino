@@ -8,6 +8,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <UniversalTelegramBot.h>
+#include <ESP8266HTTPClient.h>
 #include <DHT.h>
 
 // display setup
@@ -60,10 +61,89 @@ int moisture = 0;
 float temp = 0;
 float humidity = 0;
 
-// history tracking
-int moistureHist[10];
+// history tracking — one reading every 10 min = ~3.5 days of data
+#define HIST_SIZE 432           // 3 days at 10 min intervals
+#define LOG_INTERVAL 600000UL   // 10 minutes in ms
+const char* graphServer = "https://plantbot.hidenfree.com/generate_graph";
+
+uint8_t moistureHist[HIST_SIZE];
+float tempHist[HIST_SIZE];
+float humidityHist[HIST_SIZE];
+
 int histIdx = 0;
 bool histFull = false;
+unsigned long lastLog = 0;
+
+void requestGraph(String chatId) {
+
+  WiFiClientSecure graphClient;
+  graphClient.setInsecure();
+
+  HTTPClient http;
+
+  if (!http.begin(graphClient, graphServer)) {
+    return;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+
+  int count = histFull ? HIST_SIZE : histIdx;
+
+  if (count == 0) {
+    bot.sendMessage(chatId, "No history yet, try again later", "");
+    http.end();
+    return;
+  }
+
+  String payload = "{";
+  payload += "\"chat_id\":\"" + chatId + "\",";
+  payload += "\"plant\":\"" + plantName + "\",";
+
+  // moisture array
+  payload += "\"moisture\":[";
+  for (int i = 0; i < count; i++) {
+    payload += String((int)moistureHist[i]);
+    if (i < count - 1) payload += ",";
+  }
+  payload += "],";
+
+  // temperature array
+  payload += "\"temperature\":[";
+  for (int i = 0; i < count; i++) {
+    payload += String((int)tempHist[i]);
+    if (i < count - 1) payload += ",";
+  }
+  payload += "],";
+
+  // humidity array
+  payload += "\"humidity\":[";
+  for (int i = 0; i < count; i++) {
+    payload += String(humidityHist[i], 1);
+    if (i < count - 1) payload += ",";
+  }
+  payload += "]}";
+
+  int code = http.POST(payload);
+
+  Serial.print("Graph request status: ");
+  Serial.println(code);
+
+  http.end();
+}
+
+// Generate 4 dummy data points with constant values
+void generateDummyData() {
+  Serial.println("Loading 4 constant dummy data points...");
+  for (int i = 0; i < 4; i++) {
+    moistureHist[i] = 60;
+    tempHist[i]     = 24.2;
+    humidityHist[i] = 55.8;
+  }
+  
+  // Set index to 4 so the next real reading is saved at index 4
+  histIdx = 4;
+  histFull = false;
+}
 
 void setup() {
   Serial.begin(115200);
@@ -82,6 +162,9 @@ void setup() {
   display.println("Plant Monitor");
   display.println("Starting up...");
   display.display();
+
+  // Populate history arrays with our 4 constant dummy points so that we have some data to graph
+  generateDummyData();
 
   // setup pins
   pinMode(MOISTURE_PIN, INPUT);
@@ -184,14 +267,6 @@ void readSensors() {
   int raw = analogRead(MOISTURE_PIN);
   moisture = map(raw, WET_VAL, DRY_VAL, 100, 0);
   moisture = constrain(moisture, 0, 100);
-
-  // save to history
-  moistureHist[histIdx] = moisture;
-  histIdx++;
-  if (histIdx >= 10) {
-    histIdx = 0;
-    histFull = true;
-  }
 
   // temp and humidity
   float rawT = dht.readTemperature();
@@ -495,16 +570,19 @@ void handleMessages(int numMsgs) {
     }
     else if (text == "/history") {
       String msg = "Moisture History:\n\n";
-      int count = histFull ? 10 : histIdx;
+      int count = histFull ? HIST_SIZE : histIdx;
       if (count == 0) {
         msg += "No data yet";
       } else {
         int start = histFull ? histIdx : 0;
-        for (int j = 0; j < count; j++) {
-          int idx = (start + j) % 10;
-          msg += String(count - j) + ". " + String(moistureHist[idx]) + "%\n";
+        // show last 10 entries max to keep message short
+        int show = min(count, 10);
+        int offset = count - show;
+        for (int j = 0; j < show; j++) {
+          int idx = (start + offset + j) % HIST_SIZE;
+          msg += String(show - j) + ". " + String((int)moistureHist[idx]) + "%\n";
         }
-        // calc average
+        // calc average over all stored readings
         int sum = 0;
         for (int j = 0; j < count; j++) {
           sum += moistureHist[j];
@@ -538,6 +616,10 @@ void handleMessages(int numMsgs) {
         bot.sendMessage(chat, "Invalid value\n\nExample: /setalert 25", "");
       }
     }
+    else if (text == "/graph") {
+      bot.sendMessage(chat, "Generating graph, please wait...", "");
+      requestGraph(chat);
+    }
     else {
       bot.sendMessage(chat, "Unknown command\nTry /help", "");
     }
@@ -550,6 +632,21 @@ void loop() {
   checkProximity();
   updateDisplay();
   checkAlert();
+
+  // log to history on interval, not every loop
+  if (millis() - lastLog >= LOG_INTERVAL) {
+    moistureHist[histIdx] = (uint8_t)moisture;
+    tempHist[histIdx]     = temp; 
+    humidityHist[histIdx] = humidity;
+    
+    histIdx++;
+    if (histIdx >= HIST_SIZE) {
+      histIdx = 0;
+      histFull = true;
+    }
+    lastLog = millis();
+    Serial.println("History saved");
+  }
 
   // check telegram
   if (millis() - lastBotCheck > 1000) {
