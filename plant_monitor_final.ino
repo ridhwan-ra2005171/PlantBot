@@ -25,14 +25,14 @@ Adafruit_SSD1306 display(SCREEN_W, SCREEN_H, &Wire, OLED_RESET);
 
 // LED outputs
 #define RED_LED 13
-#define YELLOW_LED 15
-#define GREEN_LED 14
+// #define YELLOW_LED 15
+// #define GREEN_LED 14
 
-// moisture calibration values - tested ridhwan
+// moisture calibration values - tested
 #define DRY_VAL 634
 #define WET_VAL 401
 
-// temp sensor setup - had to calibrate because readings were off
+// temp sensor setup
 #define DHT_TYPE DHT11
 DHT dht(DHT_PIN, DHT_TYPE);
 #define TEMP_OFFSET 20.0
@@ -61,9 +61,9 @@ int moisture = 0;
 float temp = 0;
 float humidity = 0;
 
-// history tracking — one reading every 10 min = ~3.5 days of data
-#define HIST_SIZE 432           // 3 days at 10 min intervals
-#define LOG_INTERVAL 600000UL   // 10 minutes in ms
+// history tracking — one reading every 10 min
+#define HIST_SIZE 432         // ~3 days at 10 min intervals
+#define LOG_INTERVAL 2400000UL // 40 minutes in ms
 const char* graphServer = "https://plantbot.hidenfree.com/generate_graph";
 
 uint8_t moistureHist[HIST_SIZE];
@@ -74,8 +74,8 @@ int histIdx = 0;
 bool histFull = false;
 unsigned long lastLog = 0;
 
+// send history data to graph server
 void requestGraph(String chatId) {
-
   WiFiClientSecure graphClient;
   graphClient.setInsecure();
 
@@ -99,7 +99,6 @@ void requestGraph(String chatId) {
   payload += "\"chat_id\":\"" + chatId + "\",";
   payload += "\"plant\":\"" + plantName + "\",";
 
-  // moisture array
   payload += "\"moisture\":[";
   for (int i = 0; i < count; i++) {
     payload += String((int)moistureHist[i]);
@@ -107,7 +106,6 @@ void requestGraph(String chatId) {
   }
   payload += "],";
 
-  // temperature array
   payload += "\"temperature\":[";
   for (int i = 0; i < count; i++) {
     payload += String((int)tempHist[i]);
@@ -115,7 +113,6 @@ void requestGraph(String chatId) {
   }
   payload += "],";
 
-  // humidity array
   payload += "\"humidity\":[";
   for (int i = 0; i < count; i++) {
     payload += String(humidityHist[i], 1);
@@ -129,20 +126,6 @@ void requestGraph(String chatId) {
   Serial.println(code);
 
   http.end();
-}
-
-// Generate 4 dummy data points with constant values
-void generateDummyData() {
-  Serial.println("Loading 4 constant dummy data points...");
-  for (int i = 0; i < 4; i++) {
-    moistureHist[i] = 60;
-    tempHist[i]     = 24.2;
-    humidityHist[i] = 55.8;
-  }
-  
-  // Set index to 4 so the next real reading is saved at index 4
-  histIdx = 4;
-  histFull = false;
 }
 
 void setup() {
@@ -163,21 +146,18 @@ void setup() {
   display.println("Starting up...");
   display.display();
 
-  // Populate history arrays with our 4 constant dummy points so that we have some data to graph
-  generateDummyData();
-
   // setup pins
   pinMode(MOISTURE_PIN, INPUT);
   pinMode(RED_LED, OUTPUT);
-  pinMode(YELLOW_LED, OUTPUT);
-  pinMode(GREEN_LED, OUTPUT);
+  // pinMode(YELLOW_LED, OUTPUT);
+  // pinMode(GREEN_LED, OUTPUT);
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
   // turn off LEDs
   digitalWrite(RED_LED, LOW);
-  digitalWrite(YELLOW_LED, LOW);
-  digitalWrite(GREEN_LED, LOW);
+  // digitalWrite(YELLOW_LED, LOW);
+  // digitalWrite(GREEN_LED, LOW);
 
   // init DHT sensor
   pinMode(DHT_PIN, INPUT_PULLUP);
@@ -219,7 +199,6 @@ void setup() {
 
   client.setInsecure();
 
-  // send startup msg to telegram
   bot.sendMessage(chatID, "Plant monitor online! Type /help for commands", "");
   Serial.println("Telegram msg sent");
 
@@ -242,12 +221,11 @@ int getDistance() {
 
     long duration = pulseIn(ECHO_PIN, HIGH, 30000);
     int dist = duration * 0.034 / 2;
-    if (dist == 0) dist = 999; // timeout = nothing in range
+    if (dist == 0) dist = 999;
     readings[i] = dist;
-    delay(10); // small gap so the previous echo settles
+    delay(10);
   }
 
-  // sort readings (bubble sort, only 5 values)
   for (int i = 0; i < samples - 1; i++) {
     for (int j = i + 1; j < samples; j++) {
       if (readings[j] < readings[i]) {
@@ -258,28 +236,24 @@ int getDistance() {
     }
   }
 
-  return readings[samples / 2]; // middle value = median
+  return readings[samples / 2];
 }
 
 // read all sensors
 void readSensors() {
-  // moisture
   int raw = analogRead(MOISTURE_PIN);
   moisture = map(raw, WET_VAL, DRY_VAL, 100, 0);
   moisture = constrain(moisture, 0, 100);
 
-  // temp and humidity
   float rawT = dht.readTemperature();
   float rawH = dht.readHumidity();
 
-  // retry if failed
   if (isnan(rawT) || isnan(rawH)) {
     delay(100);
     rawT = dht.readTemperature();
     rawH = dht.readHumidity();
   }
 
-  // apply calibration
   if (!isnan(rawT)) {
     temp = rawT + TEMP_OFFSET;
     Serial.print("Temp raw: ");
@@ -316,16 +290,10 @@ void readSensors() {
 
 // control LEDs based on moisture
 void updateLEDs() {
-  digitalWrite(RED_LED, LOW);
-  digitalWrite(YELLOW_LED, LOW);
-  digitalWrite(GREEN_LED, LOW);
-
   if (moisture < 20) {
     digitalWrite(RED_LED, HIGH);
-  } else if (moisture < 40) {
-    digitalWrite(YELLOW_LED, HIGH);
   } else {
-    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(RED_LED, LOW);
   }
 }
 
@@ -340,21 +308,21 @@ void drawFace() {
   display.fillCircle(fx + 6, fy - 5, 2, SSD1306_WHITE); // right eye
 
   if (moisture >= 50) {
-    // HAPPY - parabola curving upward (y decreases toward edges)
+    // HAPPY - parabola curving upward (y decreases toward edges = smile)
     for (int i = -6; i <= 6; i++) {
       int sx = fx + i;
-      int sy = fy + 10 - (i * i) / 9;  // curves up = smile
+      int sy = fy + 10 - (i * i) / 9;
       display.drawPixel(sx, sy, SSD1306_WHITE);
       display.drawPixel(sx, sy + 1, SSD1306_WHITE);
     }
-  } else if (moisture >= 30) {
+  } else if (moisture >= 25) {
     // NEUTRAL - flat line
     display.drawLine(fx - 6, fy + 7, fx + 6, fy + 7, SSD1306_WHITE);
   } else {
-    // SAD - parabola curving downward (y increases toward edges)
+    // SAD - parabola curving downward (y increases toward edges = frown)
     for (int i = -6; i <= 6; i++) {
       int sx = fx + i;
-      int sy = fy + 6 + (i * i) / 9;  // curves down = frown
+      int sy = fy + 6 + (i * i) / 9;
       display.drawPixel(sx, sy, SSD1306_WHITE);
       display.drawPixel(sx, sy - 1, SSD1306_WHITE);
     }
@@ -373,19 +341,16 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
-  // plant name + divider
   display.setCursor(0, 0);
   display.println(plantName);
   display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
 
-  // moisture reading (big, left side)
   display.setTextSize(2);
   display.setCursor(0, 13);
   display.print("M:");
   display.print(moisture);
   display.println("%");
 
-  // temp and humidity (small, left side)
   display.setTextSize(1);
   display.setCursor(0, 35);
   if (temp > 0) {
@@ -400,7 +365,6 @@ void updateDisplay() {
     display.println("%");
   }
 
-  // status text bottom left
   display.setCursor(0, 56);
   if (moisture < 20) {
     display.print("VERY DRY");
@@ -412,13 +376,11 @@ void updateDisplay() {
     display.print("WET");
   }
 
-  // wifi indicator top right
   display.setCursor(100, 0);
   if (WiFi.status() == WL_CONNECTED) {
     display.print("Wifi");
   }
 
-  // draw face on right side
   drawFace();
 
   display.display();
@@ -432,7 +394,6 @@ void checkProximity() {
   Serial.print(dist);
   Serial.println("cm");
 
-  // turn on if someone nearby
   if (dist < proximityDist && dist > 0) {
     if (!displayActive) {
       Serial.println("Person detected");
@@ -441,7 +402,6 @@ void checkProximity() {
     displayTimer = millis();
   }
 
-  // auto off after 20 seconds
   if (displayActive && (millis() - displayTimer > 20000)) {
     Serial.println("Display timeout");
     displayActive = false; // set true if no HC-SR04 connected
@@ -491,23 +451,14 @@ void handleMessages(int numMsgs) {
     else if (text == "/status") {
       String msg = plantName + " Status:\n\n";
       msg += "Moisture: " + String(moisture) + "%\n";
-      if (temp > 0) {
-        msg += "Temp: " + String(temp, 1) + "C\n";
-      }
-      if (humidity > 0) {
-        msg += "Humidity: " + String(humidity, 1) + "%\n";
-      }
+      if (temp > 0) msg += "Temp: " + String(temp, 1) + "C\n";
+      if (humidity > 0) msg += "Humidity: " + String(humidity, 1) + "%\n";
       msg += "Alert level: " + String(alertThreshold) + "%\n\n";
 
-      if (moisture < 20) {
-        msg += "Status: VERY DRY\nWater now!";
-      } else if (moisture < 40) {
-        msg += "Status: DRY\nWater soon";
-      } else if (moisture < 70) {
-        msg += "Status: GOOD\nPlant happy";
-      } else {
-        msg += "Status: WET\nDont water";
-      }
+      if (moisture < 20) msg += "Status: VERY DRY\nWater now!";
+      else if (moisture < 40) msg += "Status: DRY\nWater soon";
+      else if (moisture < 70) msg += "Status: GOOD\nPlant happy";
+      else msg += "Status: WET\nDont water";
 
       if (lastWatered > 0) {
         unsigned long hrs = (millis() - lastWatered) / 3600000;
@@ -573,21 +524,17 @@ void handleMessages(int numMsgs) {
       String msg = "Moisture History:\n\n";
       int count = histFull ? HIST_SIZE : histIdx;
       if (count == 0) {
-        msg += "No data yet";
+        msg += "No data yet\n\nCheck back in 40 minutes";
       } else {
         int start = histFull ? histIdx : 0;
-        // show last 10 entries max to keep message short
         int show = min(count, 10);
         int offset = count - show;
         for (int j = 0; j < show; j++) {
           int idx = (start + offset + j) % HIST_SIZE;
           msg += String(show - j) + ". " + String((int)moistureHist[idx]) + "%\n";
         }
-        // calc average over all stored readings
         int sum = 0;
-        for (int j = 0; j < count; j++) {
-          sum += moistureHist[j];
-        }
+        for (int j = 0; j < count; j++) sum += moistureHist[j];
         int avg = sum / count;
         msg += "\nAverage: " + String(avg) + "%";
       }
@@ -611,8 +558,7 @@ void handleMessages(int numMsgs) {
       int val = text.substring(10).toInt();
       if (val > 0 && val <= 100) {
         alertThreshold = val;
-        String msg = "Alert set to " + String(alertThreshold) + "%";
-        bot.sendMessage(chat, msg, "");
+        bot.sendMessage(chat, "Alert set to " + String(alertThreshold) + "%", "");
       } else {
         bot.sendMessage(chat, "Invalid value\n\nExample: /setalert 25", "");
       }
@@ -634,29 +580,25 @@ void loop() {
   updateDisplay();
   checkAlert();
 
-  // log to history on interval, not every loop
+  // log to history every 10 minutes
   if (millis() - lastLog >= LOG_INTERVAL) {
     moistureHist[histIdx] = (uint8_t)moisture;
-    tempHist[histIdx]     = temp; 
+    tempHist[histIdx]     = temp;
     humidityHist[histIdx] = humidity;
-    
+
     histIdx++;
     if (histIdx >= HIST_SIZE) {
-      histIdx = 0;
+      histIdx = 0; //deletes the data 'cicular buffer'
       histFull = true;
     }
     lastLog = millis();
     Serial.println("History saved");
   }
 
-  // check telegram
+  // check telegram every second
   if (millis() - lastBotCheck > 1000) {
     int numNew = bot.getUpdates(bot.last_message_received + 1);
-
-    if (numNew) {
-      handleMessages(numNew);
-    }
-
+    if (numNew) handleMessages(numNew);
     lastBotCheck = millis();
   }
 
